@@ -14,7 +14,7 @@ app.use("/student", studentRouter);
 
 
 module.exports = app;
-const PORT = 3000;
+const PORT = 5000;
 // server.on('request', app);
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);

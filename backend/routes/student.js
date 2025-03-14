@@ -1,4 +1,4 @@
-import express from "express";
+const express = require ("express");
 const { Submission } = require("../db")
 const router = express.Router();
 
@@ -14,4 +14,4 @@ router.post("/submit", async (req, res) => {
     }
 });
 
-export default router;
+module.exports = router;
