@@ -5,7 +5,7 @@ const { JWT_SECRET } = require("../config");
 function teacherMiddleware(req,res,next){
     try{
         const token = req.headers.authorization;
-        const words = token.split("");
+        const words = token.split(" ");
         const jwtToken = words[1];
 
         const decodedValue = jwt.verify(jwtToken, JWT_SECRET);

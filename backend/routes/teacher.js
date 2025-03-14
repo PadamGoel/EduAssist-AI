@@ -1,24 +1,124 @@
-import express from "express";
-const { Assignment } = require("../db")
+const express = require ("express");
+const { Assignment, Teacher } = require("../db")
+const { Submission } = require("../db");
+const teacherMiddleware = require("../middleware/teacher");
 const router = express.Router();
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const jwt = require("jsonwebtoken");
+const { JWT_SECRET } = require("../config");
+const { z } = require("zod");
+const cors = require("cors");
+router.use(cors());
+
+const bcrypt = require("bcrypt");
+
+const signupSchema = z.object({
+  firstName: z.string().min(2, "First name must have at least 2 characters"),
+  lastName: z.string().min(2, "Last name must have at least 2 characters"),
+  email: z.string().email("Invalid email address"),
+  password: z.string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/[A-Z]/, "Must include an uppercase letter")
+    .regex(/[a-z]/, "Must include a lowercase letter")
+    .regex(/[0-9]/, "Must include a number"),
+  confirmPassword: z.string().min(8),
+  role: z.enum(["teacher", "student"]),
+//   agreedToTerms: z.boolean().refine(val => val === true, { message: "You must agree to the Terms of Service" }),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
+});
+
+const signinSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
 
 
-// Upload Assignment
-router.post("/upload", async (req, res) => {
+
+router.post("/signup", async function (req, res) {
     try {
-        const { title, description, uploadedBy, dueDate } = req.body;
-        const assignment = new Assignment({ title, description, uploadedBy, dueDate });
-        await assignment.save();
-        res.status(201).json({ message: "Assignment uploaded successfully", assignment });
+        const { firstName, lastName, username, password, role } = signupSchema.parse(req.body);
+
+       
+        if (role === "teacher") {
+            const existingUser = await Teacher.findOne({ username });
+            if (existingUser) {
+                return res.status(400).json({ msg: "User already exists" });
+            }
+            else{
+                await Teacher.create({ firstName, lastName, username, password, role });
+            }
+        } else {
+            const existingUser = await Student.findOne({ username });
+            if (existingUser) {
+                return res.status(400).json({ msg: "User already exists" });
+            }
+            else{
+                await Student.create({ firstName, lastName, username, password, role });
+            }
+            
+        }
+
+        const token = jwt.sign({ username, role }, JWT_SECRET);
+        res.json({ msg: "User created successfully", token });
+
     } catch (error) {
-        res.status(500).json({ error: "Error uploading assignment" });
+        res.status(400).json({ error: error.errors || error.message });
     }
 });
 
-import express from "express";
-const { Submission } = require("../db")
-import OpenAI from "openai"; // Or replace with your ML model
+  
+router.post("/signin", async function (req, res) {
+    try {
+        const { username, password } = signinSchema.parse(req.body);
+
+        // Check if user exists in Teacher or Student collection
+        const user = await Teacher.findOne({ username, password }) || 
+                     await Student.findOne({ username, password });
+
+        if (!user) {
+            return res.status(401).json({ msg: "Incorrect username or password" });
+        }
+
+        // Generate JWT token with user role
+        const token = jwt.sign({ username: user.username, role: user.role }, JWT_SECRET);
+
+        res.json({ token, role: user.role });
+    } catch (error) {
+        res.status(400).json({ error: error.errors || error.message });
+    }
+});
+  
+  
+router.get("/auth/check", teacherMiddleware, (req, res) => {
+    res.status(200).json({ username: req.username }); // Send back the authenticated user's details
+  });
+
+// Upload Assignment
+router.post("/assignments", async (req, res) => {
+    const { title, description, uploadedBy, dueDate } = req.body;
+    console.log("hello1")
+    try {
+        console.log("inside try");
+        const newAssignment = new Assignment({ title, description, uploadedBy, dueDate });
+        console.log("Assignment created", newAssignment);
+        await newAssignment.save();
+        console.log("Assignment saved")
+        res.status(201).json(newAssignment);
+    } catch (error) {
+        res.status(500).json({ error: "Failed to create assignment" });
+    }
+});
+
+router.get("/assignments", async (req, res) => {
+    try {
+        const assignments = await Assignment.find();
+        res.json(assignments);
+    } catch (error) {
+        res.status(500).json({ error: "Failed to fetch assignments" });
+    }
+});
+
 
 // Batch Grade Assignments
 router.post("/grade", async (req, res) => {
@@ -60,4 +160,4 @@ router.post("/grade", async (req, res) => {
     }
 });
 
-export default router;
+module.exports = router;
